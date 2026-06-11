@@ -1,0 +1,657 @@
+{
+  "name": "Stock market telegram bot",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 13,
+              "triggerAtMinute": 6
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        64
+      ],
+      "id": "4bcaba17-b1aa-4f9e-a25c-f57121d0caf0",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1NoSUIP2WYCvSrmnB2ijrk5edOKjRdNXqe8M4qPYOSQ0",
+          "mode": "list",
+          "cachedResultName": "stock watchlist",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1NoSUIP2WYCvSrmnB2ijrk5edOKjRdNXqe8M4qPYOSQ0/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1NoSUIP2WYCvSrmnB2ijrk5edOKjRdNXqe8M4qPYOSQ0/edit#gid=0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        224,
+        64
+      ],
+      "id": "597b5167-2087-48ca-b9e6-3faa9e7b2bf4",
+      "name": "Get row(s) in sheet",
+      "alwaysOutputData": false,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "wR3KT1CQpzlr8MQU",
+          "name": "Google Sheets account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        480
+      ],
+      "id": "e4253be9-69dd-4fe4-9d1c-2a4be5984e91",
+      "name": "Telegram Trigger",
+      "webhookId": "8c7496d2-5eba-4c2d-b4e8-5fcfde69569e",
+      "credentials": {
+        "telegramApi": {
+          "id": "zF4woF6EsPmziK8e",
+          "name": "Telegram account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a senior Indian stock market analyst writing for retail investors.\n\nAnalyze the following stock data and deliver a crisp, insight-driven summary:\n\n{{ JSON.stringify($json) }}\n\nInstructions:\n- Start with the stock name/symbol in bold, followed by a one-line verdict (bullish/bearish/neutral).\n- Mention the % change from previous close (calculate it from the data).\n- Highlight the day's range (high-low spread) and what it signals (e.g., high volatility, consolidation).\n- Comment on volume — is it unusually high or low? What does it suggest?\n- End with one forward-looking sentence: what should an investor watch for tomorrow?\n\nFormat:\n- Use ONLY basic HTML tags like <b> for bolding the ticker symbol and key numbers.\n- Use standard dashes (-) or bullet characters (•) for bullet points. Do NOT use <ul>, <li>, or any Markdown characters like ** or *.\n- Max 10 lines. No fluff. No disclaimers.\n- Tone: Sharp, confident,understandable, like a Bloomberg terminal alert.",
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.7,
+      "position": [
+        896,
+        -48
+      ],
+      "id": "623959a3-48cd-4625-aaa2-c24b4c71d664",
+      "name": "Basic LLM Chain"
+    },
+    {
+      "parameters": {
+        "url": "=https://query1.finance.yahoo.com/v8/finance/chart/{{ $json.Ticker }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        448,
+        64
+      ],
+      "id": "5a281cb3-655b-4311-9230-13d4c245d166",
+      "name": "HTTP Request1"
+    },
+    {
+      "parameters": {
+        "jsCode": "\nreturn $input.all().map(item => {\n  \n  // Grab the data for the current stock in the loop\n  const data = item.json.chart.result[0].meta;\n  \n  // Package it up and send it to the next node\n  return {\n    json: {\n      symbol: data.symbol,\n      current_price: data.regularMarketPrice,\n      previous_close: data.chartPreviousClose,\n      day_high: data.regularMarketDayHigh,\n      day_low: data.regularMarketDayLow,\n      volume: data.regularMarketVolume\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        64
+      ],
+      "id": "724dc280-48b7-444e-ba54-62006a179677",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        976,
+        176
+      ],
+      "id": "2526bada-1ab1-4a57-93b6-b1ecb9c00a9b",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "Z4ySxryiWxsP1ITg",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Get row(s) in sheet').item.json.Chat_ID }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1248,
+        64
+      ],
+      "id": "614a8cf5-129c-459e-a5d0-4fc77c250b02",
+      "name": "Send a text message",
+      "webhookId": "8dad4f4a-242a-4e7b-b996-22bf76a5b6cc",
+      "credentials": {
+        "telegramApi": {
+          "id": "zF4woF6EsPmziK8e",
+          "name": "Telegram account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const messageText = $input.first().json.message.text;\nconst parts = messageText.split(' ');\nconst condition = parts[0];\n\n// Grab everything AFTER the /analyze command and join it back together\nlet rawSymbol = parts.slice(1).join(' ').trim();\n\n// Safety check: if they didn't type a stock at all\nif (!rawSymbol) {\n  return { con: condition, ticker: \"\" };\n}\n\n// Remove accidental spaces (e.g., turning \"INDIAN OIL\" into \"INDIANOIL\")\n// because Yahoo Finance tickers do not have spaces.\nlet symbol = rawSymbol.replace(/\\s+/g, '');\n\nlet ticker = symbol;\nlet ex = \"NS\"; // Default to NSE if they forget the dot\n\n// Safe check for the dot\nif (symbol.includes('.')) {\n  splitSymbol = symbol.split('.');\n  ticker = splitSymbol[0];\n  let exRaw = splitSymbol[1].toUpperCase();\n  \n  if (exRaw === \"BSE\" || exRaw === \"bse\") ex = \"BO\";\n  else if (exRaw === \"NSE\" || exRaw === \"nse\") ex = \"NS\";\n  else ex = exRaw;\n}\n\nreturn {\n  ticker: ticker.toUpperCase() + \".\" + ex,\n  con: condition,\n  chat_id: $input.first().json.message.chat.id\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        480
+      ],
+      "id": "cb632049-2770-4b1f-842e-f8330c79b94c",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.con }}",
+                    "rightValue": "/add",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "6356a145-84e6-41c9-a4a0-b0f4cfd5f9a5"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "b06f3649-3db5-4bf3-869e-c2d7361facfa",
+                    "leftValue": "={{ $json.con }}",
+                    "rightValue": "/analyze",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.3,
+      "position": [
+        448,
+        480
+      ],
+      "id": "50c66f55-8a66-4345-a6a4-158bb6cc238c",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1NoSUIP2WYCvSrmnB2ijrk5edOKjRdNXqe8M4qPYOSQ0",
+          "mode": "list",
+          "cachedResultName": "stock watchlist",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1NoSUIP2WYCvSrmnB2ijrk5edOKjRdNXqe8M4qPYOSQ0/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1NoSUIP2WYCvSrmnB2ijrk5edOKjRdNXqe8M4qPYOSQ0/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "User": "={{ $('Telegram Trigger').item.json.message.from.first_name }}",
+            "Ticker": "={{ $json.ticker }}",
+            "Chat_ID": "={{ $('Code in JavaScript1').item.json.chat_id }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "User",
+              "displayName": "User",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Ticker",
+              "displayName": "Ticker",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Chat_ID",
+              "displayName": "Chat_ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        672,
+        384
+      ],
+      "id": "a9f57966-206a-45b5-adff-6e235b96eda5",
+      "name": "Append row in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "wR3KT1CQpzlr8MQU",
+          "name": "Google Sheets account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a senior Indian stock market analyst providing a real-time, intraday flash briefing.\n\nHere is the live market data and the top 3 breaking news headlines for the requested stock:\n{{ JSON.stringify($json) }}\n\nInstructions:\n- Start with the stock name/symbol in bold, followed by a real-time intraday verdict (e.g., Gaining momentum, Facing selling pressure, Consolidating).\n- Compare the current price to the previous close and state the live % change.\n- Analyze the price relative to the day's high/low range.\n- Add a final bullet point titled \"📰 Catalyst / News:\" and write three brief sentence summarizing the overall sentiment of the provided news headlines. \n\nFormat:\n- Use ONLY basic HTML tags like <b> for bolding the ticker symbol and key text.\n- Use standard dashes (-) or bullet characters (•) for bullet points. Do NOT use <ul>, <li>, or any Markdown characters like ** or *.\n- Max 10 lines. No fluff. \n- Tone: Urgent, sharp, and highly analytical.",
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.7,
+      "position": [
+        1568,
+        576
+      ],
+      "id": "8f0c29a4-d9a3-45cf-a670-55b172e0ac57",
+      "name": "Basic LLM Chain1"
+    },
+    {
+      "parameters": {
+        "url": "=https://query1.finance.yahoo.com/v8/finance/chart/{{ $json.ticker }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        672,
+        576
+      ],
+      "id": "9b313f79-da9b-4d77-9731-674e27253a50",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "jsCode": "// This grabs the \"meta\" data from your Yahoo Finance response\nconst data = $input.first().json.chart.result[0].meta;\n\n// This formats it into a clean, tiny package for the AI\nreturn {\n  symbol: data.symbol,\n  current_price: data.regularMarketPrice,\n  previous_close: data.chartPreviousClose,\n  day_high: data.regularMarketDayHigh,\n  day_low: data.regularMarketDayLow,\n  volume: data.regularMarketVolume\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        576
+      ],
+      "id": "b637e2f7-ff96-4f7c-8ee1-dd5dd0dd4d1d",
+      "name": "Code in JavaScript2"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        1648,
+        800
+      ],
+      "id": "98ec9d13-453a-4e08-bdbb-46d9c497fb25",
+      "name": "Google Gemini Chat Model1",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "Z4ySxryiWxsP1ITg",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').first().json.message.chat.id }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1920,
+        576
+      ],
+      "id": "5d42b0a5-728f-47d0-8eaf-ff3b3f6fc060",
+      "name": "Send a text message1",
+      "webhookId": "8dad4f4a-242a-4e7b-b996-22bf76a5b6cc",
+      "credentials": {
+        "telegramApi": {
+          "id": "zF4woF6EsPmziK8e",
+          "name": "Telegram account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').item.json.message.chat.id }}",
+        "text": "=✅ Successfully added {{ $json.Ticker }} to your daily briefing.",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        896,
+        384
+      ],
+      "id": "995ffce4-ccc9-4d59-97a4-5979212a7c18",
+      "name": "Send a text message2",
+      "webhookId": "df6986af-ee39-4a1a-a7d0-9bcf52bc55b5",
+      "credentials": {
+        "telegramApi": {
+          "id": "zF4woF6EsPmziK8e",
+          "name": "Telegram account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://news.google.com/rss/search?q={{ $json.symbol }}+stock+India&hl=en-IN&gl=IN&ceid=IN:en",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        1136,
+        576
+      ],
+      "id": "ee17e5c0-cd63-4dd1-890b-94deb2232973",
+      "name": "RSS Read",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// 1. Look back and grab the stock prices from your previous Code node\nconst stockData = $('Code in JavaScript2').first().json;\n\n// 2. Grab just the top 3 news headlines from the RSS node\nconst headlines = $input.all().slice(0, 3).map(item => item.json.title);\n\n// 3. Package them beautifully together for the AI\nreturn {\n  symbol: stockData.symbol,\n  market_data: stockData,\n  breaking_news: headlines\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1344,
+        576
+      ],
+      "id": "b275849c-15fb-420b-9cad-df61ba035e1b",
+      "name": "Code in JavaScript3"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get row(s) in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "Append row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain1": {
+      "main": [
+        [
+          {
+            "node": "Send a text message1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript2": {
+      "main": [
+        [
+          {
+            "node": "RSS Read",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append row in sheet": {
+      "main": [
+        [
+          {
+            "node": "Send a text message2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RSS Read": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript3": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a text message": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "a64edeef-26ee-4679-a2a3-ae44ec5e90ca",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "b3f67fbdeebc0fbfb5b3ed8301dc73e21527e884f764313f7bb04ea79f7a9c0f"
+  },
+  "id": "udiE1GtcVhEdf84Y",
+  "tags": []
+}
