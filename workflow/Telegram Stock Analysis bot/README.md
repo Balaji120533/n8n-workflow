@@ -65,6 +65,8 @@ The bot is built on [n8n](https://n8n.io) and runs two parallel workflows:
 
 ### Flow 1 — Scheduled Daily Briefing
 
+![Screenshot](images/workflow1.png)
+
 ```
 Schedule Trigger (daily)
   → Google Sheets (read watchlist)
@@ -75,6 +77,8 @@ Schedule Trigger (daily)
 ```
 
 ### Flow 2 — Telegram Command Handler
+
+![screenshot](images/workflow2.png)
 ```
 Telegram Trigger (on message)
   → JavaScript (parse command & ticker)
