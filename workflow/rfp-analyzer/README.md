@@ -168,13 +168,4 @@ Replace the Groq node with an **Ollama Chat Model** to avoid token limits. Use a
 
 ---
 
-## 🔭 Ideas for Next Steps
-
-- Chunk long RFPs and merge the modules
-- Slack or email alert when a new estimate is logged
-- Auto-generate a SOW document from the sheet
-- A human approval step before rows are written
-
----
-
 > Built with [n8n](https://n8n.io) · Powered by [Groq](https://groq.com) · Data stored in [Google Sheets](https://sheets.google.com)
