@@ -1,0 +1,393 @@
+{
+  "name": "RFP workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyX",
+              "value": 5,
+              "unit": "minutes"
+            }
+          ]
+        },
+        "filters": {
+          "q": "has:attachment filename:pdf subject:(RFP OR \"Request for Proposal\" OR Tender)"
+        }
+      },
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        192,
+        128
+      ],
+      "id": "6d195786-1a52-4612-888d-f10c065515cb",
+      "name": "Gmail Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "removeItemsSeenInPreviousExecutions",
+        "dedupeValue": "={{ $json.id }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.removeDuplicates",
+      "typeVersion": 2,
+      "position": [
+        416,
+        128
+      ],
+      "id": "af240223-0db5-4e59-b0a1-ece91408375f",
+      "name": "Skip Already Processed",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "messageId": "={{ $json.id }}",
+        "simple": false,
+        "options": {
+          "downloadAttachments": true
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        640,
+        128
+      ],
+      "id": "dec4c275-1baa-4341-94ab-473a67237c50",
+      "name": "Get a message"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Turn every PDF attachment into its own item so each RFP PDF is processed separately\nconst out = [];\nfor (const item of $input.all()) {\n  for (const [key, bin] of Object.entries(item.binary || {})) {\n    const isPdf = bin.mimeType === 'application/pdf' || (bin.fileName || '').toLowerCase().endsWith('.pdf');\n    if (isPdf) {\n      out.push({\n        json: {\n          messageId: item.json.id,\n          subject: item.json.subject,\n          fileName: bin.fileName\n        },\n        binary: { data: bin }\n      });\n    }\n  }\n}\nif (out.length === 0) {\n  throw new Error('No PDF attachments found in this email');\n}\nreturn out;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        864,
+        128
+      ],
+      "id": "91e8918f-343d-46ef-9d2e-5e4e28c9bdcd",
+      "name": "Split PDF Attachments"
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "data",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        1088,
+        128
+      ],
+      "id": "1403a50f-bb9e-4e69-8737-c4ba2fce688a",
+      "name": "Extract from File"
+    },
+    {
+      "parameters": {
+        "jsCode": "const MAX_CHARS = 10000;\nreturn $input.all().map(item => {\n  let text = (item.json.text || '').toString();\n  if (!text.trim()) throw new Error('PDF text extraction returned nothing');\n\n  // start at the scope/requirements section, skipping schedule and submission rules\n  const s = text.search(/scope of (professional )?(work|services?)|statement of work|project description/i);\n  let body = s > 0 ? text.slice(s) : text;\n\n  // stop before proposal-format, legal and evaluation boilerplate\n  const e = body.search(/proposal requirements|statement of rights|evaluation criteria|indemnification/i);\n  if (e > 500) body = body.slice(0, e);\n\n  return { json: { ...item.json, text: body.slice(0, MAX_CHARS), truncated: body.length > MAX_CHARS } };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1312,
+        128
+      ],
+      "id": "4db33955-9915-4c96-99a9-69eca53ac536",
+      "name": "Trim Long Text"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=### Role\nYou are a Principal Solutions Architect and Enterprise Technical Product Manager with 15+ years of experience in software scoping, technical estimation, and RFP analysis.\n\n### Objective\nAnalyze the provided client Request for Proposal (RFP) text extracted from a PDF. Extract deep structural insights, functional requirements, technical constraints, risks, and estimations required for a formal enterprise Statement of Work (SOW) and Sprint Backlog.\n\n### RFP Document Text:\n{{ $json.text }}\n\n### Instructions:\n1. Deconstruct the text thoroughly. If certain details are missing or vague, make an educated professional assumption based on standard industry practices and document it under \"key_assumptions\".\n2. Break down the project into modular functional blocks suitable for agile sprint planning.\n3. Provide realistic estimations in Story Points (using the Fibonacci scale: 1, 2, 3, 5, 8, 13, 21).\n4. Only list a requirement as firm if the RFP explicitly states it. Prefix anything you infer with \"[Assumed]\" in the assumptions and user stories.\n5. Do NOT assume anything the RFP addresses explicitly (languages, accessibility, authentication, analytics, hosting, deadlines).\n6. Cover every distinct requirement area in the scope section, including analytics, accessibility/translation, SLA/support, and UX/design.\n7. Each module's estimated_story_points must be a single Fibonacci number (1, 2, 3, 5, 8, 13, 21). Do not put point values inside user stories.\n8. Always include a Testing & QA module (functional, security, accessibility, user acceptance).\n9. Cover every analytics requirement, including tracking of frequent search queries.\n10. If the stack mixes mobile and web delivery, state in the assumptions how the web version is produced.\n11. If the RFP does not require user accounts for the public, do not assume resident login or sign-up. Limit authentication to admin users.\n12. If the RFP says content is available via a web browser, include a responsive web deployment story and note in the assumptions how the web version is built.\n13. If the RFP mentions a privacy statement or privacy policy, include a user story for it.\n\n### Output Format\nReturn ONLY a valid JSON object, with no markdown and no text outside it, in exactly this shape:\n{\n  \"project_metadata\": {\"project_title\": \"\", \"primary_objective\": \"\", \"target_audience\": \"\"},\n  \"technical_architecture\": {\"suggested_tech_stack\": [], \"non_functional_requirements\": []},\n  \"modules\": [{\"module_name\": \"\", \"module_description\": \"\", \"core_user_stories\": [], \"estimated_story_points\": 0, \"complexity_rationale\": \"\"}],\n  \"project_governance\": {\"key_assumptions\": [], \"technical_dependencies\": [], \"high_risk_factors\": []}\n}\nKeep each string under 200 characters and use at most 8 modules.",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        1536,
+        128
+      ],
+      "id": "126824c5-f62b-4fda-a871-de98ddc387a6",
+      "name": "AI Agent",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 60000
+    },
+    {
+      "parameters": {
+        "model": "openai/gpt-oss-120b",
+        "options": {
+          "maxTokensToSample": 3500,
+          "temperature": 0.1
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        1608,
+        360
+      ],
+      "id": "5ae3fdf9-43d0-4eaf-b8a1-e29cfdcc8658",
+      "name": "Groq Chat Model"
+    },
+    {
+      "parameters": {
+        "jsCode": "const FIB = [1, 2, 3, 5, 8, 13, 21];\nconst snap = n => FIB.reduce((a, b) => Math.abs(b - n) < Math.abs(a - n) ? b : a);\n\nconst rows = [];\nfor (const item of $input.all()) {\n  const out = item.json.output;\n  const raw = typeof out === 'string' ? out : JSON.stringify(out);\n  const start = raw.indexOf('{');\n  const end = raw.lastIndexOf('}');\n  if (start === -1 || end === -1) throw new Error('No JSON found: ' + raw.slice(0, 300));\n\n  let parsed;\n  try {\n    parsed = JSON.parse(raw.slice(start, end + 1));\n  } catch (e) {\n    throw new Error('Invalid JSON from model (maybe cut off): ' + raw.slice(-300));\n  }\n  if (!Array.isArray(parsed.modules) || parsed.modules.length === 0) {\n    throw new Error('No modules returned by the AI');\n  }\n\n  const metadata = parsed.project_metadata || {};\n  const architecture = parsed.technical_architecture || {};\n  const governance = parsed.project_governance || {};\n\n  for (const mod of parsed.modules) {\n    rows.push({\n      json: {\n        project_title: metadata.project_title || 'Untitled Project',\n        primary_objective: metadata.primary_objective || '',\n        tech_stack: Array.isArray(architecture.suggested_tech_stack) ? architecture.suggested_tech_stack.join(', ') : '',\n        module_name: mod.module_name || '',\n        module_description: mod.module_description || '',\n        user_stories: Array.isArray(mod.core_user_stories) ? mod.core_user_stories.join(' | ') : '',\n        estimated_story_points: snap(Number(mod.estimated_story_points) || 0),\n        complexity_rationale: mod.complexity_rationale || '',\n        key_assumptions: Array.isArray(governance.key_assumptions) ? governance.key_assumptions.join(' | ') : '',\n        high_risk_factors: Array.isArray(governance.high_risk_factors) ? governance.high_risk_factors.join(' | ') : ''\n      }\n    });\n  }\n}\nreturn rows;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1888,
+        128
+      ],
+      "id": "1adef53b-d952-46e9-8f1c-9d283bca9a33",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "id"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Project Title": "={{ $json.project_title }}",
+            "Module Name": "={{ $json.module_name }}",
+            "Module Description": "={{ $json.module_description }}",
+            "User Stories": "={{ $json.user_stories }}",
+            "Story Points": "={{ $json.estimated_story_points }}",
+            "Tech Stack": "={{ $json.tech_stack }}",
+            "Complexity Rationale": "={{ $json.complexity_rationale }}",
+            "Assumptions": "={{ $json.key_assumptions }}",
+            "Risks": "={{ $json.high_risk_factors }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Project Title",
+              "displayName": "Project Title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Module Name",
+              "displayName": "Module Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Module Description",
+              "displayName": "Module Description",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "User Stories",
+              "displayName": "User Stories",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Story Points",
+              "displayName": "Story Points",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Tech Stack",
+              "displayName": "Tech Stack",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Complexity Rationale",
+              "displayName": "Complexity Rationale",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Assumptions",
+              "displayName": "Assumptions",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Risks",
+              "displayName": "Risks",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        2112,
+        128
+      ],
+      "id": "84139fb1-61b4-4c3b-86b7-2ff13369f65d",
+      "name": "Append row in sheet"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Gmail Trigger": {
+      "main": [
+        [
+          {
+            "node": "Skip Already Processed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Skip Already Processed": {
+      "main": [
+        [
+          {
+            "node": "Get a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get a message": {
+      "main": [
+        [
+          {
+            "node": "Split PDF Attachments",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split PDF Attachments": {
+      "main": [
+        [
+          {
+            "node": "Extract from File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from File": {
+      "main": [
+        [
+          {
+            "node": "Trim Long Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trim Long Text": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Append row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "tags": []
+}
